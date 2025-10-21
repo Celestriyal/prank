@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prank Sound Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .btn {
+            @apply w-full px-6 py-4 text-lg font-bold text-white rounded-xl shadow-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-opacity-50;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-md mx-auto p-8 bg-gray-800 rounded-2xl shadow-2xl space-y-6">
+
+        <!-- Connection View -->
+        <div id="connection-view">
+            <h1 class="text-4xl font-bold text-center text-cyan-400">Prank App</h1>
+            <p class="text-center text-gray-400 mt-2">1. Enter a shared ID on both phones.</p>
+            <div class="mt-6">
+                <label for="prank-id" class="sr-only">Prank ID</label>
+                <input type="text" id="prank-id" placeholder="Enter a secret Prank ID" class="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent">
+            </div>
+            <p class="text-center text-gray-400 mt-4">2. Choose a role for this phone.</p>
+            <div class="mt-4 grid grid-cols-2 gap-4">
+                <button id="connect-controller-btn" class="btn bg-cyan-600 hover:bg-cyan-700 focus:ring-cyan-500">Controller</button>
+                <button id="connect-target-btn" class="btn bg-blue-600 hover:bg-blue-700 focus:ring-blue-500">Target</button>
+            </div>
+        </div>
+
+        <!-- Main App View (Now dynamically shows one role) -->
+        <div id="app-view" class="hidden">
+            <div class="flex justify-between items-center">
+                <h2 id="role-title" class="text-2xl font-bold"></h2>
+                <span class="text-xs text-cyan-400 bg-cyan-900/50 px-2 py-1 rounded-full" id="prank-id-display"></span>
+            </div>
+
+            <!-- Controller Section (hidden by default) -->
+            <div id="controller-section" class="hidden mt-6 space-y-4">
+                <p class="text-center text-sm text-gray-400">Use these buttons to prank the target phone.</p>
+                <button id="play-scream-btn" class="btn bg-red-600 hover:bg-red-700 focus:ring-red-500">Play Scream</button>
+                <button id="play-fart-btn" class="btn bg-green-600 hover:bg-green-700 focus:ring-green-500">Play Fart Sound</button>
+                <button id="play-cricket-btn" class="btn bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500">Play Cricket Sound</button>
+            </div>
+
+            <!-- Target Section (hidden by default) -->
+            <div id="target-section" class="hidden mt-8 text-center bg-gray-900/50 p-4 rounded-lg">
+                <p class="text-gray-400 mt-2">This phone is now in listening mode. Leave this screen open to receive pranks.</p>
+                 <div class="flex items-center justify-center space-x-2 mt-3">
+                    <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                    <span class="text-red-400 font-semibold">LISTENING...</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Tone.js for sound generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // --- UPDATED FIREBASE CONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDJ3BGeOFmaEYJD2TMY8FBar2ypVUfwoEk",
+            authDomain: "prank-f0b21.firebaseapp.com",
+            databaseURL: "https://prank-f0b21-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "prank-f0b21",
+            storageBucket: "prank-f0b21.firebasestorage.app",
+            messagingSenderId: "616077955127",
+            appId: "1:616077955127:web:511945f7b3b421d3636fb2",
+            measurementId: "G-37V4XEPCPK"
+        };
+        
+        // --- FIREBASE INITIALIZATION (UPDATED) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAnalytics, logEvent } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+        const analytics = getAnalytics(app);
+
+        // --- DOM ELEMENTS ---
+        const connectionView = document.getElementById('connection-view');
+        const appView = document.getElementById('app-view');
+        const prankIdInput = document.getElementById('prank-id');
+        const connectControllerBtn = document.getElementById('connect-controller-btn');
+        const connectTargetBtn = document.getElementById('connect-target-btn');
+        const prankIdDisplay = document.getElementById('prank-id-display');
+        const roleTitle = document.getElementById('role-title');
+
+        const controllerSection = document.getElementById('controller-section');
+        const targetSection = document.getElementById('target-section');
+
+        const playScreamBtn = document.getElementById('play-scream-btn');
+        const playFartBtn = document.getElementById('play-fart-btn');
+        const playCricketBtn = document.getElementById('play-cricket-btn');
+
+        const sessionId = Math.random().toString(36).substring(2, 10);
+        
+        let prankId = null;
+        let dbRef = null;
+
+        // --- SOUND SETUP (Unchanged) ---
+        const screamSynth = new Tone.MonoSynth({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 1 }, filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 2, baseFrequency: 300, octaves: 4 } }).toDestination();
+        const fartSynth = new Tone.NoiseSynth({ noise: { type: 'brown' }, envelope: { attack: 0.05, decay: 0.3, sustain: 0 } }).toDestination();
+        const cricketSynth = new Tone.AMSynth().toDestination();
+
+        // --- CONNECT LOGIC ---
+        connectControllerBtn.addEventListener('click', () => connect('Controller'));
+        connectTargetBtn.addEventListener('click', () => connect('Target'));
+
+        async function connect(role) {
+            prankId = prankIdInput.value.trim().replace(/[^a-zA-Z0-9]/g, '');
+            if (!prankId) {
+                alert('Please enter a Prank ID!');
+                return;
+            }
+
+            try {
+                await signInAnonymously(auth);
+                dbRef = ref(db, `pranks/${prankId}`);
+
+                // Hide connection view, show app view
+                connectionView.classList.add('hidden');
+                appView.classList.remove('hidden');
+                prankIdDisplay.textContent = `ID: ${prankId}`;
+                roleTitle.textContent = role;
+
+                // **THE FIX**: Show only the selected role's section
+                if (role === 'Controller') {
+                    controllerSection.classList.remove('hidden');
+                } else {
+                    targetSection.classList.remove('hidden');
+                }
+
+                listenForPranks();
+
+            } catch (error) {
+                console.error("Connection failed:", error);
+                if (error.code === 'auth/configuration-not-found') {
+                    alert("Authentication Error: Please go to your Firebase Console, open the 'Authentication' section, go to the 'Sign-in method' tab, and enable 'Anonymous' sign-in.");
+                } else {
+                    alert("Could not connect. Check your Firebase config and Realtime DB rules.");
+                }
+            }
+        }
+
+        // --- LISTENER & SOUND LOGIC (Unchanged) ---
+        function listenForPranks() {
+            onValue(dbRef, (snapshot) => {
+                const data = snapshot.val();
+                if (data && data.command && data.senderId !== sessionId) {
+                    const command = data.command;
+                    console.log("Prank command received from another device:", command);
+                    playSound(command);
+                    set(dbRef, { command: null, senderId: null });
+                }
+            });
+        }
+
+        function playSound(soundType) {
+            Tone.start(); 
+            switch(soundType) {
+                case 'scream':
+                    screamSynth.triggerAttackRelease('A4', '0.5s');
+                    screamSynth.frequency.rampTo('C5', '0.2s');
+                    break;
+                case 'fart':
+                    fartSynth.triggerAttackRelease('1s');
+                    break;
+                case 'cricket':
+                    cricketSynth.triggerAttackRelease("C4", "8n", Tone.now());
+                    cricketSynth.triggerAttackRelease("G4", "8n", Tone.now() + 0.2);
+                    cricketSynth.triggerAttackRelease("C5", "8n", Tone.now() + 0.4);
+                    break;
+            }
+        }
+        
+        // --- CONTROLLER BUTTON LOGIC (Unchanged) ---
+        playScreamBtn.addEventListener('click', () => sendCommand('scream'));
+        playFartBtn.addEventListener('click', () => sendCommand('fart'));
+        playCricketBtn.addEventListener('click', () => sendCommand('cricket'));
+
+        async function sendCommand(command) {
+            if (!dbRef) return;
+            try {
+                await set(dbRef, { command: command, senderId: sessionId });
+                logEvent(analytics, 'send_prank', { sound_type: command, prank_id: prankId });
+                console.log(`Command sent: ${command} from sender ${sessionId}`);
+            } catch (error) {
+                console.error("Failed to send command:", error);
+                alert("Failed to send prank. Check your connection.");
+            }
+        }
+    </script>
+</body>
+</html>
